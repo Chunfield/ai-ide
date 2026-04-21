@@ -1,0 +1,44 @@
+{
+  "name": "ai-ide-demo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "proxy": "node server/proxy.js"
+  },
+  "dependencies": {
+    "@codemirror/lang-html": "^6.4.9",
+    "@codemirror/lang-javascript": "^6.2.2",
+    "@codemirror/lang-python": "^6.1.6",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.28.4",
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-shell": "^2.0.0",
+    "@uiw/codemirror-theme-vscode": "^4.25.9",
+    "@uiw/react-codemirror": "^4.23.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "http-proxy-middleware": "^3.0.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "zustand": "^4.5.4"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.4"
+  }
+}
