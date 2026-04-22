@@ -35,3 +35,6 @@ pnpm-debug.log*
 
 # Tauri
 src-tauri/target/
+
+# Trae documents
+.trae/documents/
