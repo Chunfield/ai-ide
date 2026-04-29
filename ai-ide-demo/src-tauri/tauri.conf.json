@@ -1,14 +1,13 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "AI IDE",
-  "version": "0.1.0",
-  "identifier": "com.aiide.godot",
+  "version": "1.0.0",
+  "identifier": "com.aiide.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
-    "devtools": true
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
@@ -24,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.openai.com https://api.anthropic.com; font-src 'self' data:; img-src 'self' data: https:"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.deepseek.com https://*; font-src 'self' data:; img-src 'self' data: https: blob:;"
     }
   },
   "bundle": {
@@ -36,6 +35,69 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "public.app-category.developer-tools",
+    "shortDescription": "AI-powered Code Editor for Godot",
+    "longDescription": "A modern IDE with AI assistance for Godot game development and general programming",
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "nsis": {
+        "displayLanguageSelector": false
+      }
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      },
+      "deb": {
+        "depends": []
+      }
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true,
+      "scope": [
+        {
+          "name": "godot",
+          "cmd": "godot",
+          "args": true
+        },
+        {
+          "name": "git",
+          "cmd": "git",
+          "args": true
+        },
+        {
+          "name": "npm",
+          "cmd": "npm",
+          "args": true
+        },
+        {
+          "name": "node",
+          "cmd": "node",
+          "args": true
+        },
+        {
+          "name": "python",
+          "cmd": "python",
+          "args": true
+        },
+        {
+          "name": "python3",
+          "cmd": "python3",
+          "args": true
+        }
+      ]
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/{{owner}}/{{project}}/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
   }
 }

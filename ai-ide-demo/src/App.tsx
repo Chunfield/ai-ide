@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { FileTree } from './components/FileTree';
-import { Editor } from './components/Editor';
+import { Editor, EditorRef } from './components/Editor';
 import { ChatPanel } from './components/ChatPanel';
 import { Preview } from './components/Preview';
 import { DiffModal } from './components/DiffModal';
@@ -11,8 +11,7 @@ import { InlineDiffModal } from './components/InlineDiffModal';
 import { Resizer } from './components/Resizer';
 import { useWorkspaceStore, FilePatch, getActiveFileLanguage } from './store/workspaceStore';
 import { useAI } from './hooks/useAI';
-import type { ReactCodeMirrorRef } from '@uiw/react-codemirror';
-import { getSelectionRange, replaceRange } from './inlineEdit/editorSelection';
+import { getMonacoSelectionRange, replaceMonacoRange } from './inlineEdit/monacoSelection';
 import type { InlineEditRequest, SelectionRange } from './inlineEdit/types';
 
 function App() {
@@ -20,7 +19,7 @@ function App() {
   const code = files[activePath] ?? '';
   const setCode = useCallback((value: string) => updateFile(activePath, value), [activePath, updateFile]);
   const ai = useAI();
-  const editorRef = useRef<ReactCodeMirrorRef | null>(null);
+  const editorRef = useRef<EditorRef | null>(null);
 
   const isHtmlFile = useMemo(() => {
     const p = activePath.toLowerCase();
@@ -97,9 +96,9 @@ function App() {
   }, []);
 
   const openInlineEdit = useCallback(() => {
-    const view = editorRef.current?.view;
-    if (!view) return;
-    const selection = getSelectionRange(view);
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    const selection = getMonacoSelectionRange(editor);
     if (!selection) {
       window.alert('请先在编辑器中选中一段要改写的内容');
       return;
@@ -144,20 +143,27 @@ function App() {
   }, [activePath, ai, inlinePromptSelection]);
 
   const handleApplyInlineDiff = useCallback(() => {
-    const view = editorRef.current?.view;
-    if (!view || !inlineRequest) return;
+    const editor = editorRef.current?.getEditor();
+    if (!editor || !inlineRequest) return;
     if (useWorkspaceStore.getState().activePath !== inlineRequest.activePath) {
       window.alert('活动文件已切换，无法应用该选区修改');
       setShowInlineDiff(false);
       return;
     }
-    const currentText = view.state.doc.sliceString(inlineRequest.selection.from, inlineRequest.selection.to);
+    const model = editor.getModel();
+    if (!model) return;
+    const currentText = model.getValueInRange({
+      startLineNumber: inlineRequest.selection.lineFrom,
+      startColumn: 1,
+      endLineNumber: inlineRequest.selection.lineTo,
+      endColumn: model.getLineMaxColumn(inlineRequest.selection.lineTo),
+    });
     if (currentText !== inlineRequest.selection.text) {
       window.alert('选区内容已变化，无法安全应用该提案');
       return;
     }
-    replaceRange(view, inlineRequest.selection.from, inlineRequest.selection.to, inlineReplacementText);
-    updateFile(inlineRequest.activePath, view.state.doc.toString());
+    replaceMonacoRange(editor, inlineRequest.selection.from, inlineRequest.selection.to, inlineReplacementText);
+    updateFile(inlineRequest.activePath, editor.getValue());
     setShowInlineDiff(false);
   }, [inlineReplacementText, inlineRequest, updateFile]);
 
