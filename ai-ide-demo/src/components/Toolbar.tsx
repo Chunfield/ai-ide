@@ -1,25 +1,31 @@
 import { useState } from 'react';
-import { useAIStore } from '../store/aiStore';
+import { useWorkspaceStore } from '../store/workspaceStore';
 import { SettingsModal } from './SettingsModal';
 
 interface ToolbarProps {
   onNewFile: () => void;
   onClearEditor: () => void;
   onTogglePreview: () => void;
-  onInlineEdit: () => void;
   showPreview: boolean;
 }
 
-export function Toolbar({ onNewFile, onClearEditor, onTogglePreview, onInlineEdit, showPreview }: ToolbarProps) {
+export function Toolbar({ onNewFile, onClearEditor, onTogglePreview, showPreview }: ToolbarProps) {
   const [showSettings, setShowSettings] = useState(false);
-  const { apiKey, setApiKey } = useAIStore();
+  const workspacePath = useWorkspaceStore((s) => s.workspacePath);
+
+  const workspaceName = workspacePath ? workspacePath.split('/').pop() || workspacePath : null;
 
   return (
     <div className="flex items-center gap-4 px-4 py-2 bg-[#323233] border-b border-[#3c3c3c]">
       <div className="flex items-center gap-2">
         <span className="text-lg">🎮</span>
         <h1 className="text-white font-semibold text-sm">AI IDE</h1>
-        <span className="text-xs text-gray-500">Godot Edition</span>
+        {workspaceName && (
+          <div className="flex items-center gap-1 px-2 py-0.5 bg-[#2d2d2d] rounded text-xs">
+            <span className="text-gray-400">📂</span>
+            <span className="text-gray-300 truncate max-w-[200px]" title={workspacePath}>{workspaceName}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex-1"></div>
@@ -30,13 +36,6 @@ export function Toolbar({ onNewFile, onClearEditor, onTogglePreview, onInlineEdi
           className="px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:bg-[#3c3c3c] rounded transition-colors"
         >
           设置
-        </button>
-        <button
-          onClick={onInlineEdit}
-          className="px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:bg-[#3c3c3c] rounded transition-colors"
-          title="Cmd/Ctrl + I"
-        >
-          Inline Edit
         </button>
         <button
           onClick={onTogglePreview}
@@ -63,14 +62,7 @@ export function Toolbar({ onNewFile, onClearEditor, onTogglePreview, onInlineEdi
       </div>
 
       {showSettings && (
-        <SettingsModal
-          initialApiKey={apiKey}
-          onClose={() => setShowSettings(false)}
-          onSave={(key) => {
-            setApiKey(key);
-            setShowSettings(false);
-          }}
-        />
+        <SettingsModal onClose={() => setShowSettings(false)} />
       )}
     </div>
   );

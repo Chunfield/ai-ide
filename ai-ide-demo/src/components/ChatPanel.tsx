@@ -18,6 +18,7 @@ interface Command {
 
 export function ChatPanel({ ai, currentCode = '', onCodeDetected, onPatchesDetected }: ChatPanelProps) {
   const [input, setInput] = useState('');
+  const [expandedThoughts, setExpandedThoughts] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
@@ -104,17 +105,24 @@ export function ChatPanel({ ai, currentCode = '', onCodeDetected, onPatchesDetec
     regenerate();
   };
 
-  const renderContent = (content: string, isStreaming: boolean = false) => {
+  const renderContent = (content: string, isStreaming: boolean = false, hideJsonBlocks: boolean = false) => {
+    let processedContent = content;
+
+    if (hideJsonBlocks) {
+      processedContent = processedContent.replace(/```json\n?([\s\S]*?)```/g, '[正在处理文件...]');
+      processedContent = processedContent.replace(/```[\s\S]*?"(action|path|patches|format|type)"[\s\S]*?```/g, '[正在处理文件...]');
+    }
+
     const codeBlockRegex = /```[\w]*\n?([\s\S]*?)```/g;
     const parts = [];
     let lastIndex = 0;
     let match;
     let hasCodeBlock = false;
 
-    while ((match = codeBlockRegex.exec(content)) !== null) {
+    while ((match = codeBlockRegex.exec(processedContent)) !== null) {
       hasCodeBlock = true;
       if (match.index > lastIndex) {
-        parts.push(<span key={`text-${lastIndex}`}>{content.slice(lastIndex, match.index)}</span>);
+        parts.push(<span key={`text-${lastIndex}`}>{processedContent.slice(lastIndex, match.index)}</span>);
       }
       const code = match[1];
       parts.push(
@@ -135,21 +143,24 @@ export function ChatPanel({ ai, currentCode = '', onCodeDetected, onPatchesDetec
       }
 
       const codeMatch = afterCode.match(/^```[\w]*\n?([\s\S]*?)$/);
-      if (codeMatch) {
-        parts.push(
-          <pre key="streaming-code" className="bg-[#1e1e1e] p-2 rounded overflow-x-auto text-xs my-1 opacity-70">
-            <code>{codeMatch[1]}</code>
-          </pre>
-        );
-      } else {
-        parts.push(
-          <pre key="streaming-code" className="bg-[#1e1e1e] p-2 rounded overflow-x-auto text-xs my-1 opacity-50">
-            <code>{afterCode.replace(/```[\w]*$/, '')}</code>
-          </pre>
-        );
+      let codeContent = codeMatch ? codeMatch[1] : afterCode.replace(/```[\w]*$/, '');
+      
+      // Filter JSON blocks in streaming content
+      if (hideJsonBlocks) {
+        const jsonFiltered = codeContent.replace(/```json\n?([\s\S]*?)```/g, '[正在处理文件...]');
+        const actionFiltered = jsonFiltered.replace(/```[\s\S]*?"(action|path|patches|format|type)"[\s\S]*?```/g, '[正在处理文件...]');
+        if (actionFiltered !== codeContent) {
+          codeContent = actionFiltered;
+        }
       }
-    } else if (lastIndex < content.length) {
-      parts.push(<span key={`text-${lastIndex}`}>{content.slice(lastIndex)}</span>);
+
+      parts.push(
+        <pre key="streaming-code" className="bg-[#1e1e1e] p-2 rounded overflow-x-auto text-xs my-1 opacity-70">
+          <code>{codeContent}</code>
+        </pre>
+      );
+    } else if (lastIndex < processedContent.length) {
+      parts.push(<span key={`text-${lastIndex}`}>{processedContent.slice(lastIndex)}</span>);
     }
 
     if (isStreaming && hasCodeBlock) {
@@ -159,11 +170,60 @@ export function ChatPanel({ ai, currentCode = '', onCodeDetected, onPatchesDetec
     return parts.length > 0 ? parts : content;
   };
 
+  const toggleThought = (messageId: string) => {
+    setExpandedThoughts(prev => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  };
+
+  const renderAssistantMessage = (message: typeof messages[0], isStreaming: boolean) => {
+    const content = message.content;
+    const thoughtMatch = content.match(/<think>([\s\S]*?)<\/think>/);
+
+    if (!thoughtMatch) {
+      return renderContent(content, isStreaming, true);
+    }
+
+    const thought = thoughtMatch[1].trim();
+    const afterThought = content.slice(thoughtMatch[0].length);
+    const isExpanded = expandedThoughts.has(message.id);
+    const shortThought = thought.length > 100 ? thought.slice(0, 100) + '...' : thought;
+
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => toggleThought(message.id)}
+            className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1"
+          >
+            <span className="text-[10px]">{isExpanded ? '▼' : '▶'}</span>
+            <span>Thought</span>
+          </button>
+        </div>
+        <div
+          className={`text-xs text-gray-500 bg-[#252526] rounded px-2 py-1 cursor-pointer hover:bg-[#2d2d2d] transition-colors ${
+            isExpanded ? '' : 'max-h-8 overflow-hidden'
+          }`}
+          onClick={() => toggleThought(message.id)}
+        >
+          {isExpanded ? thought : shortThought}
+        </div>
+        {afterThought.trim() && renderContent(afterThought, isStreaming, true)}
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e]">
       <div className="px-4 py-3 bg-[#252526] border-b border-[#3c3c3c] flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-white">AI 助手 (DeepSeek)</h2>
+          <h2 className="text-sm font-semibold text-white">AI 助手</h2>
           {(isLoading || isStreaming) && (
             <div className="flex items-center gap-2 text-xs px-2 py-0.5 rounded bg-[#2d2d2d] border border-[#3c3c3c] text-gray-300">
               <span className={`inline-block w-2 h-2 rounded-full ${isToolRunning ? 'bg-yellow-400 animate-ping' : 'bg-[#4cc2ff] animate-pulse'}`}></span>
@@ -181,22 +241,6 @@ export function ChatPanel({ ai, currentCode = '', onCodeDetected, onPatchesDetec
             </div>
           </div>
         </div>
-        {(isLoading || isStreaming) && (
-          <div className="flex gap-2">
-            <button
-              onClick={handleStop}
-              className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-500 transition-colors"
-            >
-              ⏹ 停止
-            </button>
-            <button
-              onClick={handleRegenerate}
-              className="px-3 py-1 text-xs bg-yellow-600 text-white rounded hover:bg-yellow-500 transition-colors"
-            >
-              🔄 重新生成
-            </button>
-          </div>
-        )}
       </div>
 
       {selectedContextPaths.length > 0 && (
@@ -230,29 +274,64 @@ export function ChatPanel({ ai, currentCode = '', onCodeDetected, onPatchesDetec
             key={message.id}
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
-            <div
-              className={`max-w-[85%] rounded-lg px-4 py-2 text-sm whitespace-pre-wrap break-words ${
-                message.role === 'user'
-                  ? 'bg-[#007acc] text-white'
+            <div className="max-w-[85%]">
+              <div
+                className={`rounded-lg px-4 py-2 text-sm whitespace-pre-wrap break-words ${
+                  message.role === 'user'
+                    ? 'bg-[#007acc] text-white'
+                    : message.role === 'tool'
+                    ? 'bg-[#1e1e1e] text-gray-300 border border-[#3c3c3c]'
+                    : message.role === 'system'
+                    ? 'bg-[#2d2d2d] text-gray-400 border border-[#3c3c3c]'
+                    : 'bg-[#2d2d2d] text-gray-200'
+                }`}
+              >
+                {message.role === 'assistant' && isStreaming && message.content === ''
+                  ? <span className="text-gray-400">{loadingLabel}</span>
                   : message.role === 'tool'
-                  ? 'bg-[#1e1e1e] text-gray-300 border border-[#3c3c3c]'
-                  : message.role === 'system'
-                  ? 'bg-[#2d2d2d] text-gray-400 border border-[#3c3c3c]'
-                  : 'bg-[#2d2d2d] text-gray-200'
-              }`}
-            >
-              {message.role === 'assistant' && isStreaming && message.content === ''
-                ? <span className="text-gray-400">{loadingLabel}</span>
-                : message.role === 'tool'
-                ? (
-                  <div className="space-y-1">
-                    <div className="text-[10px] uppercase tracking-wider text-gray-500">
-                      tool{message.toolName ? `: ${message.toolName}` : ''}{message.toolCallId ? ` (${message.toolCallId})` : ''}
+                  ? (
+                    <div className="space-y-1">
+                      <div className="text-[10px] uppercase tracking-wider text-gray-500">
+                        tool{message.toolName ? `: ${message.toolName}` : ''}{message.toolCallId ? ` (${message.toolCallId})` : ''}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {message.toolName === 'READ_FILE' ? '[读取文件内容]' :
+                         message.toolName === 'WRITE_FILE' ? '[写入文件]' :
+                         message.toolName === 'SEARCH_FILES' ? '[搜索文件]' :
+                         message.toolName === 'LIST_DIRECTORY' ? '[列出目录]' :
+                         message.toolName === 'RUN_COMMAND' ? '[执行命令]' :
+                         '[工具执行结果]'}
+                      </div>
                     </div>
-                    <div>{renderContent(message.content, false)}</div>
-                  </div>
-                )
-                : renderContent(message.content, isStreaming && message.role === 'assistant')}
+                  )
+                  : message.role === 'assistant' ? (
+                    renderAssistantMessage(message, isStreaming)
+                  ) : (
+                    renderContent(message.content, false, message.role !== 'system')
+                  )}
+              </div>
+              {message.role === 'assistant' && !isStreaming && message.content && (
+                <div className="flex items-center gap-1 mt-1 pl-1">
+                  <button
+                    onClick={() => navigator.clipboard.writeText(message.content)}
+                    className="p-1.5 text-gray-500 hover:text-gray-300 hover:bg-[#3c3c3c] rounded transition-colors"
+                    title="复制"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={handleRegenerate}
+                    className="p-1.5 text-gray-500 hover:text-gray-300 hover:bg-[#3c3c3c] rounded transition-colors"
+                    title="重新生成"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -294,12 +373,29 @@ export function ChatPanel({ ai, currentCode = '', onCodeDetected, onPatchesDetec
             disabled={isStreaming}
           />
           <button
-            type="submit"
-            disabled={isStreaming || !input.trim()}
-            className="px-6 py-2 bg-[#007acc] text-white text-sm rounded hover:bg-[#005a8f] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            type={isStreaming ? "button" : "submit"}
+            onClick={isStreaming ? handleStop : undefined}
+            className={`group relative px-4 py-2 text-white text-sm rounded transition-colors ${
+              isStreaming
+                ? 'bg-red-600 hover:bg-red-500'
+                : 'bg-[#007acc] hover:bg-[#005a8f] disabled:opacity-50 disabled:cursor-not-allowed'
+            }`}
+            disabled={!isStreaming && !input.trim()}
+            title={isStreaming ? "停止生成" : "发送消息"}
           >
-            发送
+            {isStreaming ? (
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="1" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            )}
           </button>
+        </div>
+        <div className="flex justify-center mt-2">
+          <span className="text-[10px] text-gray-500">按 Enter 发送，Shift+Enter 换行</span>
         </div>
       </form>
     </div>

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "AI IDE",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "identifier": "com.aiide.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -59,39 +59,7 @@
   },
   "plugins": {
     "shell": {
-      "open": true,
-      "scope": [
-        {
-          "name": "godot",
-          "cmd": "godot",
-          "args": true
-        },
-        {
-          "name": "git",
-          "cmd": "git",
-          "args": true
-        },
-        {
-          "name": "npm",
-          "cmd": "npm",
-          "args": true
-        },
-        {
-          "name": "node",
-          "cmd": "node",
-          "args": true
-        },
-        {
-          "name": "python",
-          "cmd": "python",
-          "args": true
-        },
-        {
-          "name": "python3",
-          "cmd": "python3",
-          "args": true
-        }
-      ]
+      "open": true
     },
     "updater": {
       "endpoints": [

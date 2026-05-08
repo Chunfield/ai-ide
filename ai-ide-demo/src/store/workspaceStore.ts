@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { invoke } from '@tauri-apps/api/core';
 
 export type WorkspaceNodeType = 'file' | 'folder';
 
@@ -23,50 +24,26 @@ interface WorkspaceStore {
   files: FileMap;
   activePath: string;
   selectedContextPaths: string[];
+  workspacePath: string;
   openFile: (path: string) => void;
   updateFile: (path: string, content: string) => void;
   createFile: (parentPath: string, name: string, initialContent?: string) => string;
+  createFolder: (parentPath: string, name: string) => string;
+  setWorkspace: (path: string, tree: WorkspaceNode, files: FileMap) => void;
   clearActiveFile: () => void;
   toggleContextPath: (path: string) => void;
   clearContext: () => void;
   applyFilePatches: (patches: FilePatch[]) => void;
 }
 
-const DEFAULT_TREE: WorkspaceNode = {
+const EMPTY_TREE: WorkspaceNode = {
   type: 'folder',
-  name: 'demo-project',
+  name: '空工作区',
   path: '/',
-  children: [
-    { type: 'file', name: 'README.md', path: '/README.md' },
-    { type: 'file', name: 'project.godot', path: '/project.godot' },
-    {
-      type: 'folder',
-      name: 'scenes',
-      path: '/scenes',
-      children: [{ type: 'file', name: 'Main.tscn', path: '/scenes/Main.tscn' }],
-    },
-    {
-      type: 'folder',
-      name: 'scripts',
-      path: '/scripts',
-      children: [{ type: 'file', name: 'player.gd', path: '/scripts/player.gd' }],
-    },
-    {
-      type: 'folder',
-      name: 'web',
-      path: '/web',
-      children: [{ type: 'file', name: 'index.html', path: '/web/index.html' }],
-    },
-  ],
+  children: [],
 };
 
-const DEFAULT_FILES: FileMap = {
-  '/README.md': `# AI IDE Demo\n\n- 在左侧文件树切换文件\n- 在中间编辑器编辑内容\n- 在右侧用 AI 修改当前文件，然后在 Diff 弹窗中应用修改\n`,
-  '/project.godot': `[gd_project]\nconfig_version=5\n\n[application]\nconfig/name=\"AI IDE Demo\"\nrun/main_scene=\"res://scenes/Main.tscn\"\n`,
-  '/scenes/Main.tscn': `[gd_scene load_steps=2 format=3]\n\n[node name=\"Main\" type=\"Node2D\"]\n`,
-  '/scripts/player.gd': `extends CharacterBody2D\n\nvar speed := 200.0\n\nfunc _physics_process(delta: float) -> void:\n\tvar input_dir := Vector2.ZERO\n\tinput_dir.x = Input.get_action_strength(\"ui_right\") - Input.get_action_strength(\"ui_left\")\n\tinput_dir.y = Input.get_action_strength(\"ui_down\") - Input.get_action_strength(\"ui_up\")\n\tvelocity = input_dir.normalized() * speed\n\tmove_and_slide()\n`,
-  '/web/index.html': `<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n  <meta charset=\"UTF-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>AI 生成页面</title>\n  <style>\n    * { margin: 0; padding: 0; box-sizing: border-box; }\n    body {\n      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n      min-height: 100vh;\n      display: flex;\n      align-items: center;\n      justify-content: center;\n    }\n    .container {\n      background: white;\n      padding: 2rem;\n      border-radius: 16px;\n      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);\n      text-align: center;\n    }\n    h1 { color: #333; margin-bottom: 1rem; }\n    p { color: #666; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <h1>AI IDE Demo</h1>\n    <p>在右侧输入：帮我把背景改成深色，并加一个按钮</p>\n  </div>\n</body>\n</html>\n`,
-};
+const EMPTY_FILES: FileMap = {};
 
 function findNodeByPath(node: WorkspaceNode, path: string): WorkspaceNode | null {
   if (node.path === path) return node;
@@ -147,10 +124,11 @@ function removeNodeByPath(node: WorkspaceNode, targetPath: string): { node: Work
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
-  tree: DEFAULT_TREE,
-  files: DEFAULT_FILES,
-  activePath: '/web/index.html',
+  tree: EMPTY_TREE,
+  files: EMPTY_FILES,
+  activePath: '',
   selectedContextPaths: [],
+  workspacePath: '',
 
   toggleContextPath: (path) => {
     set((state) => {
@@ -169,6 +147,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   applyFilePatches: (patches) => {
     if (!patches || patches.length === 0) return;
+
+    const { workspacePath } = get();
 
     set((state) => {
       let nextFiles = { ...state.files };
@@ -203,6 +183,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           }
 
           nextFiles[patch.path] = patch.content;
+
+          if (workspacePath && patch.path.startsWith('/')) {
+            const relativePath = patch.path.slice(1);
+            invoke('write_workspace_file', { workspacePath, relativePath, content: patch.content }).catch(console.error);
+          }
           continue;
         }
 
@@ -251,6 +236,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           }
 
           nextFiles[patch.path] = content;
+
+          if (workspacePath && patch.path.startsWith('/')) {
+            const relativePath = patch.path.slice(1);
+            invoke('write_workspace_file', { workspacePath, relativePath, content }).catch(console.error);
+          }
           continue;
         }
       }
@@ -261,16 +251,27 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   openFile: (path) => {
     const { files } = get();
-    if (files[path] === undefined) return;
+    console.log('[DEBUG workspaceStore] openFile called:', path);
+    console.log('[DEBUG workspaceStore] available files:', Object.keys(files));
+    if (files[path] === undefined) {
+      console.log('[DEBUG workspaceStore] file not found in store:', path);
+      return;
+    }
+    console.log('[DEBUG workspaceStore] setting activePath to:', path);
     set({ activePath: path });
   },
 
   updateFile: (path, content) => {
     set((state) => ({ files: { ...state.files, [path]: content } }));
+    const { workspacePath } = get();
+    if (workspacePath && path.startsWith('/')) {
+      const relativePath = path.slice(1);
+      invoke('write_workspace_file', { workspacePath, relativePath, content }).catch(console.error);
+    }
   },
 
   createFile: (parentPath, name, initialContent = '') => {
-    const { files, tree } = get();
+    const { files, tree, workspacePath } = get();
     const parent = findNodeByPath(tree, parentPath);
     if (!parent || parent.type !== 'folder') return '';
 
@@ -284,7 +285,40 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       tree: updateTreeNode(state.tree, parentPath, (n) => insertChild(n, child)),
       activePath: newPath,
     }));
+
+    if (workspacePath && newPath.startsWith('/')) {
+      const relativePath = newPath.slice(1);
+      invoke('write_workspace_file', { workspacePath, relativePath, content: initialContent }).catch(console.error);
+    }
     return newPath;
+  },
+
+  createFolder: (parentPath, name) => {
+    const { tree } = get();
+    const parent = findNodeByPath(tree, parentPath);
+    if (!parent || parent.type !== 'folder') return '';
+
+    const normalizedParent = parentPath === '/' ? '' : parentPath;
+    const newPath = `${normalizedParent}/${name}`;
+
+    const existing = findNodeByPath(tree, newPath);
+    if (existing) return '';
+
+    const child: WorkspaceNode = { type: 'folder', name, path: newPath, children: [] };
+    set((state) => ({
+      tree: updateTreeNode(state.tree, parentPath, (n) => insertChild(n, child)),
+    }));
+    return newPath;
+  },
+
+  setWorkspace: (path, tree, files) => {
+    set({
+      workspacePath: path,
+      tree,
+      files,
+      activePath: '',
+      selectedContextPaths: [],
+    });
   },
 
   clearActiveFile: () => {

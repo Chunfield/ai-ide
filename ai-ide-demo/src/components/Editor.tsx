@@ -14,10 +14,11 @@ interface EditorProps {
   languageHint: string;
   contextPaths: string[];
   requestCompletions: (req: AICompletionRequest, signal?: AbortSignal) => Promise<AICompletionItem[]>;
+  onInlineEdit: (selection: { text: string; lineFrom: number; lineTo: number }) => void;
 }
 
 export const Editor = forwardRef<EditorRef, EditorProps>(function Editor(
-  { value, onChange, activePath, languageHint, contextPaths, requestCompletions },
+  { value, onChange, activePath, languageHint, contextPaths, requestCompletions, onInlineEdit },
   ref
 ) {
   return (
@@ -29,6 +30,7 @@ export const Editor = forwardRef<EditorRef, EditorProps>(function Editor(
       languageHint={languageHint}
       contextPaths={contextPaths}
       requestCompletions={requestCompletions}
+      onInlineEdit={onInlineEdit}
     />
   );
 });

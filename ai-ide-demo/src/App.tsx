@@ -95,20 +95,20 @@ function App() {
     setPendingPatches([]);
   }, []);
 
-  const openInlineEdit = useCallback(() => {
+  const openInlineEdit = useCallback((selection?: { text: string; lineFrom: number; lineTo: number }) => {
     const editor = editorRef.current?.getEditor();
     if (!editor) return;
-    const selection = getMonacoSelectionRange(editor);
-    if (!selection) {
+    const sel = selection ? { text: selection.text, lineFrom: selection.lineFrom, lineTo: selection.lineTo, from: 0, to: 0 } : getMonacoSelectionRange(editor);
+    if (!sel) {
       window.alert('请先在编辑器中选中一段要改写的内容');
       return;
     }
     const MAX_SELECTION_CHARS = 6000;
-    if (selection.text.length > MAX_SELECTION_CHARS) {
-      window.alert(`选区过长（${selection.text.length} 字符），请缩小选区后再试`);
+    if (sel.text.length > MAX_SELECTION_CHARS) {
+      window.alert(`选区过长（${sel.text.length} 字符），请缩小选区后再试`);
       return;
     }
-    setInlinePromptSelection(selection);
+    setInlinePromptSelection(sel);
     setShowInlinePrompt(true);
   }, []);
 
@@ -244,21 +244,6 @@ function App() {
   }, [handleNewFile, handleTogglePreview]);
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.key.toLowerCase() !== 'i') return;
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || (target as any)?.isContentEditable) return;
-      if (showDiff || showMultiDiff || showInlinePrompt || showInlineDiff) return;
-      e.preventDefault();
-      openInlineEdit();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [openInlineEdit, showDiff, showInlineDiff, showInlinePrompt, showMultiDiff]);
-
-  useEffect(() => {
     const update = () => {
       const el = containerRef.current;
       if (!el) return;
@@ -284,7 +269,6 @@ function App() {
         onNewFile={handleNewFile}
         onClearEditor={handleClearEditor}
         onTogglePreview={handleTogglePreview}
-        onInlineEdit={openInlineEdit}
         showPreview={showPreview}
       />
 
@@ -302,6 +286,7 @@ function App() {
               languageHint={getActiveFileLanguage(activePath)}
               contextPaths={selectedContextPaths}
               requestCompletions={ai.requestCompletions}
+              onInlineEdit={openInlineEdit}
             />
           </div>
         </div>

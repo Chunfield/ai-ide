@@ -12,6 +12,8 @@
     "shell:allow-stdin-write",
     "shell:allow-kill",
     "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister"
+    "global-shortcut:allow-unregister",
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

@@ -1,7 +1,7 @@
 {
   "name": "ai-ide-demo",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,6 +14,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-shell": "^2.0.0",
+    "@tauri-apps/plugin-dialog": "^2.0.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "http-proxy-middleware": "^3.0.5",

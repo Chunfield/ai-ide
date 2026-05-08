@@ -529,14 +529,23 @@ export function useAI() {
   };
 
   const requestCompletions = async (req: AICompletionRequest, signal?: AbortSignal): Promise<AICompletionItem[]> => {
+    console.log('[DEBUG useAI] requestCompletions called', { req });
+
     const apiKey = useAIStore.getState().apiKey;
-    if (!apiKey) return [];
+    if (!apiKey) {
+      console.log('[DEBUG useAI] No API key, returning empty');
+      return [];
+    }
 
     const now = Date.now();
-    const recent = completionRecentRef.current.filter((t) => now - t < 1000);
+    const recent = completionRecentRef.current.filter((t) => now - t < 2000);
     completionRecentRef.current = recent;
     const isExplicit = !!req.explicit;
-    if (!isExplicit && recent.length >= 2) return [];
+    console.log('[DEBUG useAI] isExplicit:', isExplicit, 'recent count:', recent.length);
+    if (!isExplicit && recent.length >= 4) {
+      console.log('[DEBUG useAI] Rate limited, returning empty');
+      return [];
+    }
     completionRecentRef.current.push(now);
 
     completionAbortRef.current?.abort();
@@ -558,7 +567,11 @@ export function useAI() {
 
     const cacheKey = `${language}\n${activePath}\n${prefix}\n${suffix}\n${contextPaths.join('|')}\n${req.maxCandidates}`;
     const cached = completionCacheRef.current.get(cacheKey);
-    if (cached && cached.expiresAt > now) return cached.items;
+    if (cached && cached.expiresAt > now) {
+      console.log('[DEBUG useAI] Cache hit, returning cached items');
+      return cached.items;
+    }
+    console.log('[DEBUG useAI] Cache miss');
 
     const lastLine = prefix.slice(Math.max(0, prefix.lastIndexOf('\n') + 1));
     const token = (lastLine.match(/[A-Za-z_][\w-]{1,40}$/) ?? [])[0] ?? '';
@@ -610,16 +623,28 @@ export function useAI() {
 
     let content = '';
     try {
+      console.log('[DEBUG useAI] Calling API...');
       const res = await runNonStreamRound(apiKey, [{ role: 'system', content: system }, { role: 'user', content: userParts.join('\n\n') }], undefined, localSignal);
       content = res.content ?? '';
-    } catch {
+      console.log('[DEBUG useAI] API returned, content length:', content.length);
+      console.log('[DEBUG useAI] content (first 200):', content.slice(0, 200));
+    } catch (e) {
+      console.error('[DEBUG useAI] API call failed:', e);
       return [];
     }
 
-    if (localSignal.aborted) return [];
-    if (seq !== completionSeqRef.current) return [];
+    if (localSignal.aborted) {
+      console.log('[DEBUG useAI] Aborted after API call');
+      return [];
+    }
+    if (seq !== completionSeqRef.current) {
+      console.log('[DEBUG useAI] Sequence mismatch');
+      return [];
+    }
 
+    console.log('[DEBUG useAI] Parsing completion items...');
     const items = parseCompletionItems(content);
+    console.log('[DEBUG useAI] Parsed items count:', items.length);
     completionCacheRef.current.set(cacheKey, { expiresAt: now + 60_000, items });
     return items;
   };
@@ -776,9 +801,11 @@ export function useAI() {
             setActiveToolName(null);
           }
 
-          addMessage(
-            { role: 'tool', content: formatToolLog(tc.function.name, parsedArgs, toolResult), toolName: tc.function.name, toolCallId: tc.id },
-          );
+          if (tc.function.name !== 'propose_file_patches') {
+            addMessage(
+              { role: 'tool', content: formatToolLog(tc.function.name, parsedArgs, toolResult), toolName: tc.function.name, toolCallId: tc.id },
+            );
+          }
 
           if (tc.function.name === 'propose_file_patches' && Array.isArray(parsedArgs.patches)) {
             const normalized: FilePatch[] = parsedArgs.patches
